@@ -65,7 +65,7 @@ typedef struct _php_ssh2_session_data {
 	zval *macerror_cb;
 	zval *disconnect_cb;
 
-	php_socket_t socket;
+	php_stream *stream;
 } php_ssh2_session_data;
 
 typedef struct _php_ssh2_sftp_data {

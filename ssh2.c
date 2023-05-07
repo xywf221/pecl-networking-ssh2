@@ -200,6 +200,26 @@ LIBSSH2_DISCONNECT_FUNC(php_ssh2_disconnect_cb)
 }
 /* }}} */
 
+/*
+ * recv use php stream function
+ */
+LIBSSH2_RECV_FUNC(php_ssh2_socket_recv)
+{
+	php_ssh2_session_data *data;
+	data = (php_ssh2_session_data *)*abstract;
+	int ret = php_stream_read(data->stream, buffer, length);
+	return ret;
+}
+
+/*
+ * send use php stream function
+ */
+LIBSSH2_SEND_FUNC(php_ssh2_socket_send)
+{
+	php_ssh2_session_data *data;
+	data = (php_ssh2_session_data *)*abstract;
+	return php_stream_write(data->stream, buffer, length);
+}
 
 
 /* *****************
@@ -301,21 +321,23 @@ LIBSSH2_SESSION *php_ssh2_session_connect(char *host, int port, zval *methods, z
 	LIBSSH2_SESSION *session;
 	int socket;
 	php_ssh2_session_data *data;
+	php_stream *stream;
 	struct timeval tv;
 	zend_string *hash_lookup_zstring;
 
 	tv.tv_sec = FG(default_socket_timeout);
 	tv.tv_usec = 0;
 
-	socket = php_network_connect_socket_to_host(host, port, SOCK_STREAM, 0, &tv, NULL, NULL, NULL, 0, STREAM_SOCKOP_NONE);
-
-	if (socket <= 0) {
+	stream = php_stream_sock_open_host(host, port, SOCK_STREAM, &tv, 0);
+	if (stream == NULL || FAILURE == php_stream_cast(stream, PHP_STREAM_AS_FD_FOR_SELECT | PHP_STREAM_CAST_INTERNAL, (void *)&socket, 1) &&
+							  !ZEND_VALID_SOCKET(socket))
+	{
 		php_error_docref(NULL, E_WARNING, "Unable to connect to %s on port %d", host, port);
 		return NULL;
 	}
 
 	data = ecalloc(1, sizeof(php_ssh2_session_data));
-	data->socket = socket;
+	data->stream = stream;
 
 	session = libssh2_session_init_ex(php_ssh2_alloc_cb, php_ssh2_free_cb, php_ssh2_realloc_cb, data);
 	if (!session) {
@@ -324,6 +346,10 @@ LIBSSH2_SESSION *php_ssh2_session_connect(char *host, int port, zval *methods, z
 		closesocket(socket);
 		return NULL;
 	}
+    // set send and recv callback
+    libssh2_session_callback_set(session, LIBSSH2_CALLBACK_SEND, php_ssh2_socket_send);
+    libssh2_session_callback_set(session, LIBSSH2_CALLBACK_RECV, php_ssh2_socket_recv);
+
 	libssh2_banner_set(session, LIBSSH2_SSH_DEFAULT_BANNER " PHP");
 
 	/* Override method preferences */
@@ -1288,7 +1314,7 @@ static void php_ssh2_session_dtor(zend_resource *rsrc)
 			zval_ptr_dtor((*data)->disconnect_cb);
 		}
 
-		closesocket((*data)->socket);
+		php_stream_close((*data)->stream);
 
 		efree(*data);
 		*data = NULL;
