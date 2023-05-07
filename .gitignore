@@ -34,3 +34,5 @@
 /test/*.diff
 /test/*.sh
 /test/*.log
+.idea
+*.dep
