@@ -13,7 +13,7 @@ Coroutine::run(static function () use($wr1): void {
 
     Coroutine::run(static function () use ($session, $wr): void {
         echo "start auth\r\n";
-        $flag = ssh2_auth_password($session, 'root', 'a5472118');
+        $flag = ssh2_auth_password($session, 'root', 'x');
         echo "auth done\r\n";
 
         Coroutine::run(static function () use ($session,$wr): void {
